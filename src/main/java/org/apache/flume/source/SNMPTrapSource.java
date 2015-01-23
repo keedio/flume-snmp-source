@@ -65,6 +65,9 @@ import org.snmp4j.util.ThreadPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.apache.flume.instrumentation.SourceCounter;
+import org.apache.flume.instrumentation.SinkCounter;
+
 /*
  *  The pollable source will get regularly polled by the source runner asking it 
  *  to generate events. Nevertheless this is a event driven source which is 
@@ -83,6 +86,9 @@ public class SNMPTrapSource extends AbstractSource
         .getLogger(SNMPTrapSource.class);
 
     private CounterGroup counterGroup = new CounterGroup();
+    
+    private SourceCounter sourceCounter;
+    private SinkCounter sinkCounter;
 
     public class SNMPTrapHandler implements CommandResponder
     {
@@ -177,9 +183,12 @@ public class SNMPTrapSource extends AbstractSource
                     getChannelProcessor().processEvent(event);
 
                     counterGroup.incrementAndGet("events.success");
+                    sourceCounter.incrementEventReceivedCount();
+                    sinkCounter.incrementEventDrainAttemptCount();
 
                 } catch (ChannelException ex) {
                     counterGroup.incrementAndGet("events.dropped");
+                    
                     logger.error("Error writting to channel", ex);
                     return;
                 }
@@ -226,15 +235,18 @@ public class SNMPTrapSource extends AbstractSource
             logger.info("Error in Listening for Trap");
             logger.info("Exception Message = ", e.getMessage());
         }
-
+        
         super.start();
+        sourceCounter.start();
+        sinkCounter.start();
     }
 
     @Override
     public void stop() {
         logger.info("SNMPTrap Source stopping...");
         logger.info("Metrics:{}", counterGroup);
-
+        sourceCounter.stop();
+        sinkCounter.stop();
         super.stop();
     }
 
@@ -247,6 +259,8 @@ public class SNMPTrapSource extends AbstractSource
          */
         bindAddress = context.getString("bind", DEFAULT_BIND);
         bindPort = context.getInteger("port", DEFAULT_PORT);
+        sourceCounter = new SourceCounter(this.getName());
+        sinkCounter = new SinkCounter(this.getName());
     }
 
 }
